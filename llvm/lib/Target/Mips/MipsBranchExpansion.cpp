@@ -164,6 +164,7 @@ private:
   bool handleSlot(Pred Predicate, Safe SafeInSlot);
   bool handleForbiddenSlot();
   bool handleFPUDelaySlot();
+  bool handleLoadDelaySlot();
   bool handlePossibleLongBranch();
 
   const MipsSubtarget *STI;
@@ -801,6 +802,18 @@ bool MipsBranchExpansion::handleFPUDelaySlot() {
                     });
 }
 
+bool MipsBranchExpansion::handleLoadDelaySlot() {
+  // Load delay slot hazards are only for MIPS1.
+  if (!STI->hasMips1() || STI->hasMips2())
+    return false;
+
+  return handleSlot(
+      [this](auto &I) -> bool { return TII->HasLoadDelaySlot(I); },
+      [this](auto &IInSlot, auto &I) -> bool {
+        return TII->SafeInLoadDelaySlot(IInSlot, I);
+      });
+}
+
 bool MipsBranchExpansion::handlePossibleLongBranch() {
   if (STI->inMips16Mode() || !STI->enableLongBranchPass())
     return false;
@@ -881,9 +894,10 @@ bool MipsBranchExpansion::runOnMachineFunction(MachineFunction &MF) {
   bool longBranchChanged = handlePossibleLongBranch();
   bool forbiddenSlotChanged = handleForbiddenSlot();
   bool fpuDelaySlotChanged = handleFPUDelaySlot();
+  bool loadDelaySlotChanged = handleLoadDelaySlot();
 
-  bool Changed =
-      longBranchChanged || forbiddenSlotChanged || fpuDelaySlotChanged;
+  bool Changed = longBranchChanged || forbiddenSlotChanged ||
+                 fpuDelaySlotChanged || loadDelaySlotChanged;
 
   // Then run them alternatively while there are changes
   while (forbiddenSlotChanged) {
